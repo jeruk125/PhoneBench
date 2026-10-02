@@ -22,6 +22,7 @@ from ..security import audit, permission_required
 from ..services.adb import ADBUnavailable, read_properties, scan_devices
 from ..services.backup import create_database_backup, export_records, restore_attachments, restore_database
 from ..services.ai import AIProviderError, OpenAICompatibleProvider
+from ..money import parse_money
 
 operations = Blueprint("operations", __name__)
 
@@ -31,9 +32,9 @@ def _owner_only():
         abort(403)
 
 
-def _amount(value):
+def _amount(value, currency="IDR"):
     try:
-        amount = Decimal(value or "0")
+        amount = parse_money(value, currency)
         return amount.quantize(Decimal("0.01")) if amount.is_finite() and amount >= 0 else None
     except (InvalidOperation, TypeError):
         return None
@@ -81,8 +82,10 @@ def inventory():
             name = request.form.get("name", "").strip()
             quantity = request.form.get("quantity", 0, type=int)
             minimum = request.form.get("minimum_quantity", 0, type=int)
-            unit_cost = _amount(request.form.get("unit_cost"))
-            selling_price = _amount(request.form.get("selling_price"))
+            setting = AppSetting.query.filter_by(key="currency").first()
+            currency = setting.value if setting and setting.value in {"IDR", "USD"} else "IDR"
+            unit_cost = _amount(request.form.get("unit_cost"), currency)
+            selling_price = _amount(request.form.get("selling_price"), currency)
             sku = request.form.get("sku", "").strip() or None
             if not name or len(name) > 180 or quantity is None or quantity < 0 or minimum is None or minimum < 0 or unit_cost is None or selling_price is None:
                 flash("Provide a valid item name, non-negative integer quantities, and valid non-negative prices.", "danger")
@@ -235,6 +238,21 @@ def reports():
 def settings():
     _owner_only()
     if request.method == "POST":
+        if request.form.get("action") == "set_currency":
+            currency = request.form.get("currency", "")
+            if currency not in {"IDR", "USD"}:
+                flash("Choose a supported currency.", "danger")
+            else:
+                row = AppSetting.query.filter_by(key="currency").first()
+                if not row:
+                    row = AppSetting(key="currency", value=currency)
+                    db.session.add(row)
+                else:
+                    row.value = currency
+                audit("update", "settings", new_value=f"currency={currency}")
+                db.session.commit()
+                flash("Display currency updated. Existing amounts are not converted.", "success")
+            return redirect(url_for("operations.settings"))
         allowed_placeholders = {"customer_name", "device_name", "ticket_number", "status", "public_note"}
         submitted = {
             event: request.form.get(f"template_{event}", "").strip()
@@ -251,7 +269,9 @@ def settings():
             templates = {row.event: row.template for row in NotificationTemplate.query.all()}
             ai_configured = bool(current_app.config.get("AI_BASE_URL") and current_app.config.get("AI_API_KEY") and current_app.config.get("AI_MODEL"))
             whatsapp_configured = bool(current_app.config.get("WHATSAPP_TOKEN") and current_app.config.get("WHATSAPP_PHONE_NUMBER_ID"))
-            return render_template("settings.html", templates=templates, ai_configured=ai_configured, whatsapp_configured=whatsapp_configured, upload_path=current_app.config["UPLOAD_FOLDER"])
+            currency_setting = AppSetting.query.filter_by(key="currency").first()
+            currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+            return render_template("settings.html", templates=templates, ai_configured=ai_configured, whatsapp_configured=whatsapp_configured, upload_path=current_app.config["UPLOAD_FOLDER"], currency=currency)
         for event, template in submitted.items():
             if template:
                 row = NotificationTemplate.query.filter_by(event=event).first()
@@ -266,7 +286,9 @@ def settings():
     templates = {row.event: row.template for row in NotificationTemplate.query.all()}
     ai_configured = bool(current_app.config.get("AI_BASE_URL") and current_app.config.get("AI_API_KEY") and current_app.config.get("AI_MODEL"))
     whatsapp_configured = bool(current_app.config.get("WHATSAPP_TOKEN") and current_app.config.get("WHATSAPP_PHONE_NUMBER_ID"))
-    return render_template("settings.html", templates=templates, ai_configured=ai_configured, whatsapp_configured=whatsapp_configured, upload_path=current_app.config["UPLOAD_FOLDER"])
+    currency_setting = AppSetting.query.filter_by(key="currency").first()
+    currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+    return render_template("settings.html", templates=templates, ai_configured=ai_configured, whatsapp_configured=whatsapp_configured, upload_path=current_app.config["UPLOAD_FOLDER"], currency=currency)
 
 
 @operations.route("/audit")

@@ -10,16 +10,17 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import func
 from ..extensions import db
 from ..models import (
-    Customer, InventoryItem, InventoryMovement, Invoice, InvoiceItem, Payment, Repair, Transaction,
+    AppSetting, Customer, InventoryItem, InventoryMovement, Invoice, InvoiceItem, Payment, Repair, Transaction,
 )
+from ..money import format_money, parse_money
 from ..security import audit, permission_required
 
 finance = Blueprint("finance", __name__)
 
 
-def money(value):
+def money(value, currency="IDR"):
     try:
-        amount = Decimal(value or "0")
+        amount = parse_money(value, currency)
         if not amount.is_finite() or amount < 0:
             return None
         return amount.quantize(Decimal("0.01"))
@@ -50,10 +51,12 @@ def invoice_create(repair_id):
     if Invoice.query.filter_by(repair_id=repair.id).filter(Invoice.status != "VOID").first():
         flash("This repair already has an active invoice. Edit it or void it before creating another.", "warning")
         return redirect(url_for("repairs.repair_detail", repair_id=repair.id))
-    labor = money(request.form.get("labor", "0"))
-    discount = money(request.form.get("discount", "0"))
-    tax = money(request.form.get("tax", "0"))
-    service_amount = money(request.form.get("service_amount", "0"))
+    currency_setting = AppSetting.query.filter_by(key="currency").first()
+    currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+    labor = money(request.form.get("labor", "0"), currency)
+    discount = money(request.form.get("discount", "0"), currency)
+    tax = money(request.form.get("tax", "0"), currency)
+    service_amount = money(request.form.get("service_amount", "0"), currency)
     service_description = request.form.get("service_description", "").strip()
     if None in (labor, discount, tax, service_amount):
         flash("Invoice amounts must be valid non-negative numbers.", "danger")
@@ -143,6 +146,8 @@ def invoice_pdf(invoice_id):
     text.setFont("Helvetica-Bold", 18)
     text.textLine("PhoneBench Invoice")
     text.setFont("Helvetica", 11)
+    currency_setting = AppSetting.query.filter_by(key="currency").first()
+    currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
     for line in [
         invoice.invoice_number,
         f"Customer: {invoice.customer.name}",
@@ -151,11 +156,11 @@ def invoice_pdf(invoice_id):
     ]:
         text.textLine(line)
     for item in invoice.items:
-        text.textLine(f"{item.description}  x{item.quantity}   {item.line_total:.2f}")
+        text.textLine(f"{item.description}  x{item.quantity}   {format_money(item.line_total, currency)}")
     text.textLine("")
-    text.textLine(f"Subtotal: {invoice.subtotal:.2f}")
-    text.textLine(f"Discount: {invoice.discount:.2f}    Tax: {invoice.tax:.2f}")
-    text.textLine(f"TOTAL: {invoice.total:.2f}    Paid: {invoice.paid:.2f}    Balance: {invoice.balance:.2f}")
+    text.textLine(f"Subtotal: {format_money(invoice.subtotal, currency)}")
+    text.textLine(f"Discount: {format_money(invoice.discount, currency)}    Tax: {format_money(invoice.tax, currency)}")
+    text.textLine(f"TOTAL: {format_money(invoice.total, currency)}    Paid: {format_money(invoice.paid, currency)}    Balance: {format_money(invoice.balance, currency)}")
     pdf.drawText(text)
     pdf.save()
     response = make_response(stream.getvalue())
@@ -169,7 +174,9 @@ def invoice_pdf(invoice_id):
 @permission_required("payments.write")
 def payment_add(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
-    amount = money(request.form.get("amount"))
+    currency_setting = AppSetting.query.filter_by(key="currency").first()
+    currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+    amount = money(request.form.get("amount"), currency)
     kind = request.form.get("kind", "PAYMENT")
     method = request.form.get("method", "Cash")
     if kind not in {"PAYMENT", "REFUND"} or method not in {"Cash", "Bank transfer", "QRIS", "E-wallet", "Other"} or amount is None or amount <= 0:
@@ -209,7 +216,9 @@ def payment_add(invoice_id):
 def accounting():
     if request.method == "POST":
         transaction_type = request.form.get("type")
-        amount = money(request.form.get("amount"))
+        currency_setting = AppSetting.query.filter_by(key="currency").first()
+        currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+        amount = money(request.form.get("amount"), currency)
         if transaction_type not in {"INCOME", "EXPENSE"} or amount is None or amount <= 0:
             flash("Choose a transaction type and enter a valid positive amount.", "danger")
         else:

@@ -9,8 +9,9 @@ from unittest.mock import patch
 
 from phonebench import create_app
 from phonebench.extensions import db
+from phonebench.money import format_money, parse_money
 from phonebench.models import (
-    Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
+    AppSetting, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
     Payment, Repair, RepairAttempt, Solution, Transaction, User,
 )
 from phonebench.security import new_portal_token
@@ -71,6 +72,49 @@ class PhoneBenchTestCase(unittest.TestCase):
         db.session.add(repair)
         db.session.commit()
         return customer, device, repair
+
+    def test_language_switch_is_available_before_and_after_login(self):
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-language="id"', response.data)
+
+        self.login()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-language="en"', response.data)
+        script_response = self.client.get("/static/app.js")
+        self.assertIn(b"phonebench-language", script_response.data)
+        script_response.close()
+
+    def test_currency_setting_and_money_format(self):
+        self.assertEqual(format_money(100000, "IDR"), "Rp.100.000")
+        self.assertEqual(format_money("100000.50", "IDR"), "Rp.100.000,50")
+        self.assertEqual(format_money(100000, "USD"), "$100,000.00")
+        self.assertEqual(parse_money("100.000,50", "IDR"), Decimal("100000.50"))
+        self.assertEqual(parse_money("100,000.50", "USD"), Decimal("100000.50"))
+
+        self.login()
+        response = self.client.get("/settings")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Indonesian rupiah (IDR)', response.data)
+        response = self.client.post("/settings", data={
+            "action": "set_currency",
+            "currency": "USD",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(AppSetting.query.filter_by(key="currency").one().value, "USD")
+        response = self.client.get("/settings")
+        self.assertIn(b'data-currency="USD"', response.data)
+        response = self.client.post("/inventory", data={
+            "action": "create",
+            "name": "Test part",
+            "unit_cost": "1,234.50",
+            "selling_price": "2,000.00",
+        })
+        self.assertEqual(response.status_code, 302)
+        item = InventoryItem.query.filter_by(name="Test part").one()
+        self.assertEqual(item.unit_cost, Decimal("1234.50"))
+        self.assertEqual(item.selling_price, Decimal("2000.00"))
 
     def test_authentication_customer_crud_and_workflow_to_knowledge(self):
         response = self.client.get("/")

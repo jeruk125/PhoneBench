@@ -9,6 +9,7 @@ from flask_wtf.csrf import CSRFError
 
 from .extensions import csrf, db, login_manager, migrate
 from .models import User
+from .money import format_money
 
 
 def create_app(test_config=None):
@@ -87,7 +88,15 @@ def create_app(test_config=None):
 
     @app.context_processor
     def inject_shell_data():
-        return {"current_user": current_user}
+        from .models import AppSetting
+
+        setting = AppSetting.query.filter_by(key="currency").first()
+        currency = setting.value if setting and setting.value in {"IDR", "USD"} else "IDR"
+        return {"current_user": current_user, "currency": currency}
+
+    @app.template_filter("money")
+    def money_filter(value, currency="IDR"):
+        return format_money(value, currency)
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):

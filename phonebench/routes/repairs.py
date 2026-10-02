@@ -13,10 +13,11 @@ from werkzeug.utils import secure_filename
 
 from ..extensions import db
 from ..models import (
-    Attachment, AuditLog, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
+    AppSetting, Attachment, AuditLog, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
     Repair, RepairAttempt, Solution, User,
 )
 from ..security import ROLE_PERMISSIONS, allowed_upload, audit, permission_required
+from ..money import parse_money
 
 repairs = Blueprint("repairs", __name__)
 REPAIR_STATUSES = ["RECEIVED", "DIAGNOSING", "WAITING_CUSTOMER", "WAITING_PART", "REPAIRING", "TESTING", "COMPLETED", "FAILED", "CANCELLED", "PICKED_UP"]
@@ -52,7 +53,9 @@ def repair_new():
     customer = db.session.get(Customer, request.form.get("customer_id", type=int))
     device = db.session.get(Device, request.form.get("device_id", type=int))
     problem = request.form.get("customer_problem", "").strip()
-    estimate = _decimal(request.form.get("estimated_cost"))
+    currency_setting = AppSetting.query.filter_by(key="currency").first()
+    currency = currency_setting.value if currency_setting and currency_setting.value in {"IDR", "USD"} else "IDR"
+    estimate = _decimal(request.form.get("estimated_cost"), currency)
     priority = request.form.get("priority", "NORMAL")
     assigned_id = request.form.get("assigned_technician_id", type=int)
     assigned = db.session.get(User, assigned_id) if assigned_id else None
@@ -91,9 +94,9 @@ def repair_new():
     return redirect(url_for("repairs.repair_detail", repair_id=repair.id))
 
 
-def _decimal(value):
+def _decimal(value, currency="IDR"):
     try:
-        amount = Decimal(value or "0")
+        amount = parse_money(value, currency)
         return amount if amount.is_finite() and amount >= 0 else None
     except (InvalidOperation, TypeError):
         return None

@@ -15,7 +15,7 @@
 {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<div class="queue-strip">{% for status, label in [('RECEIVED','Newly received'),('WAITING_CUSTOMER','Waiting customer'),('WAITING_PART','Waiting parts'),('REPAIRING','Repairing'),('TESTING','Testing'),('COMPLETED','Completed')] %}<div><span>{{ label }}</span><strong>{{ queue_counts[status] }}</strong></div>{% endfor %}</div>{% endif %}
 <div class="metric-grid">
   {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<article class="metric-card"><span>Active repairs</span><strong>{{ active_repairs }}</strong><small>Assigned or in progress</small></article>{% endif %}
-  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING'] %}<article class="metric-card"><span>Today's cash received</span><strong>{{ "%.2f"|format(revenue_today|float) }}</strong><small>Linked invoice payments</small></article>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING'] %}<article class="metric-card"><span>Today's cash received</span><strong>{{ revenue_today|money(currency) }}</strong><small>Linked invoice payments</small></article>{% endif %}
   {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING','RECEPTIONIST'] %}<article class="metric-card"><span>Outstanding invoices</span><strong>{{ outstanding|length }}</strong><small>With a remaining balance</small></article>{% endif %}
   <article class="metric-card"><span>Low stock</span><strong>{{ low_stock|length }}</strong><small>At or below minimum</small></article>
 </div>

@@ -28,6 +28,14 @@ Override the database with `PHONEBENCH_DATABASE_URL`, for example `postgresql+ps
 
 `flask --app run.py create-admin` prompts for a username, display name, and password. Passwords must contain at least 12 characters. Owner/Admin have full access; technicians can work assigned tickets and knowledge; Receptionists handle customer/device/intake tasks; Accounting manages invoices, payments, and financial views. Create further staff from **Technicians / Users**. There are no preset passwords.
 
+## Interface language
+
+Use the **ENG / IND** selector in the top bar (or on the sign-in page) to switch between English and Indonesian. The choice is saved in that browser.
+
+## Display currency
+
+Owners and admins can select Indonesian rupiah (IDR) or US dollars (USD) under **Settings → Display currency**. Amounts across the application, including invoices and reports, use the selected currency format. Money fields group digits as you type (for example, `100.000` in IDR and `100,000` in USD). Changing the display currency does not convert saved amounts or perform exchange-rate calculations; select the currency that matches your records.
+
 ## Demo records
 
 `flask --app run.py seed-demo` creates fictional `Demo ...` records without demo users. Seeded notes, repairs, solutions, inventory, and invoice values are explicitly marked as demo content.
