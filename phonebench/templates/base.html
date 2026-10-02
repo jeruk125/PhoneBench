@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PhoneBench{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('core.dashboard') }}"><span class="brand-mark">P</span> PhoneBench</a>
+    <nav>
+      <a href="{{ url_for('core.dashboard') }}">Dashboard</a>
+      {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<a href="{{ url_for('repairs.repair_list') }}">Repairs</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<a href="{{ url_for('core.devices') }}">Devices</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','RECEPTIONIST'] %}<a href="{{ url_for('core.customers') }}">Customers</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN'] %}<a href="{{ url_for('repairs.knowledge') }}">Knowledge</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING','RECEPTIONIST'] %}<a href="{{ url_for('operations.inventory') }}">Inventory</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING','RECEPTIONIST'] %}<a href="{{ url_for('finance.invoice_list') }}">Invoices</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING'] %}<a href="{{ url_for('finance.accounting') }}">Accounting</a>{% endif %}
+      {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN'] %}<a href="{{ url_for('operations.ai_assistant') }}">AI Assistant</a>{% endif %}
+      <a href="{{ url_for('operations.scanner') }}">Device Scanner</a>
+      {% if current_user.role in ['OWNER', 'ADMIN'] %}
+      <a href="{{ url_for('operations.reports') }}">Reports</a>
+      <a href="{{ url_for('operations.settings') }}">Settings</a>
+      <a href="{{ url_for('core.users') }}">Technicians / Users</a>
+      <a href="{{ url_for('operations.audit_log') }}">Audit Log</a>
+      <a href="{{ url_for('operations.backups') }}">Backup / Restore</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-user">
+      <strong>{{ current_user.display_name }}</strong><small>{{ current_user.role }}</small>
+      <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button" type="submit">Sign out</button></form>
+    </div>
+  </aside>
+  {% endif %}
+  <main class="{% if current_user.is_authenticated %}main-content{% else %}public-content{% endif %}">
+    {% if current_user.is_authenticated %}
+    <header class="topbar">
+      <form class="global-search" action="{{ url_for('core.search') }}" method="get">
+        <span aria-hidden="true">⌕</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Search customers, devices, repairs, errors..." aria-label="Global search">
+        <kbd>Search</kbd>
+      </form>
+      <div class="top-actions"><span class="status-dot"></span> Local workspace <span class="user-chip">{{ current_user.display_name[:1]|upper }}</span></div>
+    </header>
+    {% endif %}
+    <section class="page">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · PhoneBench{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">WORKSPACE OVERVIEW</p><h1>Good work starts with good records.</h1><p class="muted">Your shop at a glance. Every repair adds to what you know.</p></div>
+  {% if current_user.role in ['OWNER','ADMIN','RECEPTIONIST'] %}<a class="button primary" href="{{ url_for('repairs.repair_list') }}">＋ New repair</a>{% endif %}
+</div>
+{% if demo_mode %}<div class="flash info">Demo records are present. Names and sample repairs marked “DEMO” are fictional evaluation data.</div>{% endif %}
+<div class="quick-actions">
+  {% if current_user.role in ['OWNER','ADMIN','RECEPTIONIST'] %}<a href="{{ url_for('core.customer_new') }}">＋ New customer</a><a href="{{ url_for('core.devices') }}">＋ New device</a><a href="{{ url_for('repairs.repair_list') }}">＋ New repair</a>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING','RECEPTIONIST'] %}<a href="{{ url_for('operations.inventory') }}">＋ Add inventory</a>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING'] %}<a href="{{ url_for('finance.invoice_list') }}">＋ Create invoice</a><a href="{{ url_for('finance.accounting') }}">＋ Record payment</a>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN'] %}<a href="{{ url_for('repairs.knowledge') }}">⌕ Search knowledge</a>{% endif %}<a href="{{ url_for('operations.scanner') }}">↗ Connect Android</a>
+</div>
+{% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<div class="queue-strip">{% for status, label in [('RECEIVED','Newly received'),('WAITING_CUSTOMER','Waiting customer'),('WAITING_PART','Waiting parts'),('REPAIRING','Repairing'),('TESTING','Testing'),('COMPLETED','Completed')] %}<div><span>{{ label }}</span><strong>{{ queue_counts[status] }}</strong></div>{% endfor %}</div>{% endif %}
+<div class="metric-grid">
+  {% if current_user.role in ['OWNER','ADMIN','TECHNICIAN','RECEPTIONIST'] %}<article class="metric-card"><span>Active repairs</span><strong>{{ active_repairs }}</strong><small>Assigned or in progress</small></article>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING'] %}<article class="metric-card"><span>Today's cash received</span><strong>{{ "%.2f"|format(revenue_today|float) }}</strong><small>Linked invoice payments</small></article>{% endif %}
+  {% if current_user.role in ['OWNER','ADMIN','ACCOUNTING','RECEPTIONIST'] %}<article class="metric-card"><span>Outstanding invoices</span><strong>{{ outstanding|length }}</strong><small>With a remaining balance</small></article>{% endif %}
+  <article class="metric-card"><span>Low stock</span><strong>{{ low_stock|length }}</strong><small>At or below minimum</small></article>
+</div>
+<div class="content-grid">
+  <section class="panel span-two">
+    <div class="panel-heading"><div><p class="eyebrow">WORK QUEUE</p><h2>Recent repairs</h2></div><a href="{{ url_for('repairs.repair_list') }}">View all →</a></div>
+    {% if repairs %}<div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Customer / device</th><th>Problem</th><th>Status</th></tr></thead><tbody>
+    {% for repair in repairs %}<tr><td><a class="mono" href="{{ url_for('repairs.repair_detail', repair_id=repair.id) }}">{{ repair.ticket_number }}</a></td><td>{{ repair.customer.name }}<small>{{ repair.device.brand }} {{ repair.device.model }}</small></td><td>{{ repair.customer_problem|truncate(60) }}</td><td><span class="badge {{ repair.status|lower }}">{{ repair.status|replace('_',' ') }}</span></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty-state"><strong>No repairs yet</strong><p>Create a ticket to start building your service history.</p></div>{% endif %}
+  </section>
+  <section class="panel"><div class="panel-heading"><div><p class="eyebrow">RESTOCK</p><h2>Low inventory</h2></div><a href="{{ url_for('operations.inventory') }}">Manage →</a></div>
+    {% for item in low_stock %}<div class="compact-row"><span>{{ item.name }}<small>{{ item.sku or item.category }}</small></span><strong class="warning-text">{{ item.quantity }} / {{ item.minimum_quantity }}</strong></div>{% else %}<p class="muted">All tracked items are above their minimum.</p>{% endfor %}
+  </section>
+  <section class="panel"><div class="panel-heading"><div><p class="eyebrow">CUSTOMERS</p><h2>Recently added</h2></div><a href="{{ url_for('core.customers') }}">View all →</a></div>
+    {% for customer in recent_customers %}<div class="compact-row"><a href="{{ url_for('core.customer_detail', customer_id=customer.id) }}">{{ customer.name }}</a><small>{{ customer.phone or 'No phone on file' }}</small></div>{% else %}<p class="muted">No customers yet.</p>{% endfor %}
+  </section>
+  <section class="panel"><div class="panel-heading"><div><p class="eyebrow">FIELD NOTES</p><h2>Recent attempts</h2></div></div>
+    {% for attempt in recent_attempts %}<div class="compact-row"><span><a href="{{ url_for('repairs.repair_detail', repair_id=attempt.repair_id) }}">{{ attempt.repair.ticket_number }}</a><small>{{ attempt.tool or attempt.method or 'Attempt' }}</small></span><span class="badge {{ attempt.result|lower }}">{{ attempt.result }}</span></div>{% else %}<p class="muted">Attempts will show here as technicians work.</p>{% endfor %}
+  </section>
+  <section class="panel"><div class="panel-heading"><div><p class="eyebrow">REUSABLE KNOWLEDGE</p><h2>New solutions</h2></div><a href="{{ url_for('repairs.knowledge') }}">Open library →</a></div>
+    {% for solution in recent_solutions %}<div class="compact-row"><a href="{{ url_for('repairs.knowledge') }}">{{ solution.title }}</a><span class="badge {{ 'success' if solution.verified else 'unknown' }}">{{ 'Verified' if solution.verified else 'Unverified' }}</span></div>{% else %}<p class="muted">Promote a successful repair attempt into knowledge.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

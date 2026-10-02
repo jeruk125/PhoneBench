@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Customer portal link · PhoneBench{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">ONE-TIME TOKEN DISPLAY</p><h1>Customer portal link created</h1><p class="muted">This raw link is not stored in PhoneBench or in a flash/session message. Copy it now; it cannot be retrieved later.</p></div></div>
+<section class="panel"><h2>{{ repair.ticket_number }}</h2><label>Secure customer link<input id="portal-link" value="{{ link }}" readonly></label><div class="form-actions"><button class="button primary" type="button" data-copy="#portal-link">Copy link</button><a class="button secondary" href="{{ url_for('repairs.repair_detail', repair_id=repair.id) }}">Return to repair</a></div><p class="warning-box">Anyone with this link can see the customer-safe status page for this ticket. Share it only with the customer. Revoke access from the repair page if needed.</p></section>
+{% endblock %}

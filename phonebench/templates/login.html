@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Sign in · PhoneBench{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand large"><span class="brand-mark">P</span> PhoneBench</div>
+    <p class="muted">Repair knowledge, organized.</p>
+    <h1>Welcome back</h1>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Username<input name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <label class="inline"><input type="checkbox" name="remember"> Keep me signed in</label>
+      <button class="button primary full" type="submit">Sign in</button>
+    </form>
+    <p class="hint">First run? Create an owner account with <code>flask --app run.py create-admin</code>.</p>
+  </div>
+</div>
+{% endblock %}

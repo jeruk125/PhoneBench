@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Search · PhoneBench{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">GLOBAL SEARCH</p><h1>Search PhoneBench</h1><p class="muted">Exact identifiers, device codes, ticket numbers, errors, tools, and historical solutions.</p></div></div>
+<form class="search-large" method="get"><input name="q" value="{{ term }}" placeholder="e.g. SM-A525F bootloop or SHA256 is invalid" autofocus><button class="button primary">Search</button></form>
+{% if term %}
+<div class="result-grid">
+  <section class="panel"><h2>Customers <small class="muted">({{ customers|length }})</small></h2>{% for c in customers %}<div class="result-row"><a href="{{ url_for('core.customer_detail', customer_id=c.id) }}">{{ c.name }} · {{ c.phone or '' }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Devices <small class="muted">({{ devices|length }})</small></h2>{% for d in devices %}<div class="result-row"><a href="{{ url_for('core.device_detail', device_id=d.id) }}">{{ d.brand }} {{ d.model }} · {{ d.device_code or '' }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Repairs <small class="muted">({{ repairs|length }})</small></h2>{% for r in repairs %}<div class="result-row"><a href="{{ url_for('repairs.repair_detail', repair_id=r.id) }}">{{ r.ticket_number }} · {{ r.customer_problem }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Diagnoses <small class="muted">({{ diagnoses|length }})</small></h2>{% for d in diagnoses %}<div class="result-row"><a href="{{ url_for('repairs.repair_detail', repair_id=d.repair_id) }}">{{ d.problem_category }} · {{ d.diagnosis|truncate(100) }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Attempts &amp; errors <small class="muted">({{ attempts|length }})</small></h2>{% for a in attempts %}<div class="result-row"><a href="{{ url_for('repairs.repair_detail', repair_id=a.repair_id) }}">#{{ a.attempt_number }} · {{ a.error_message or a.method or a.tool or a.notes|truncate(100) }}</a><span class="badge {{ a.result|lower }}">{{ a.result }}</span></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Knowledge <small class="muted">({{ solutions|length }})</small></h2>{% for s in solutions %}<div class="result-row"><a href="{{ url_for('repairs.knowledge', q=s.device_model) }}">{{ s.title }} · {{ s.device_model }}</a><span class="badge {{ 'success' if s.verified else 'unknown' }}">{{ 'Verified' if s.verified else 'Historical' }}</span></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Invoices <small class="muted">({{ invoices|length }})</small></h2>{% for i in invoices %}<div class="result-row"><a href="{{ url_for('finance.invoice_detail', invoice_id=i.id) }}">{{ i.invoice_number }} · {{ i.customer.name }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+  <section class="panel"><h2>Inventory <small class="muted">({{ inventory|length }})</small></h2>{% for item in inventory %}<div class="result-row"><a href="{{ url_for('operations.inventory') }}">{{ item.name }} · {{ item.sku or item.category }}</a></div>{% else %}<p class="muted">No matches.</p>{% endfor %}</section>
+</div>
+{% endif %}
+{% endblock %}

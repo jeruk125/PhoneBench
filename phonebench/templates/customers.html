@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Customers · PhoneBench{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">RELATIONSHIPS</p><h1>Customers</h1><p class="muted">One customer, many devices, a complete service history.</p></div><a class="button primary" href="{{ url_for('core.customer_new') }}">＋ New customer</a></div>
+<form class="inline-filter"><input name="q" value="{{ request.args.get('q','') }}" placeholder="Search name, phone, email"><button class="button secondary">Filter</button></form>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Contact</th><th>Devices</th><th>Repairs</th><th>Added</th></tr></thead><tbody>{% for c in customers %}<tr><td><a href="{{ url_for('core.customer_detail', customer_id=c.id) }}">{{ c.name }}</a></td><td>{{ c.phone or '—' }}<small>{{ c.email or '' }}</small></td><td>{{ c.devices|length }}</td><td>{{ c.repairs|length }}</td><td>{{ c.created_at.strftime('%b %d, %Y') }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No customers found.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

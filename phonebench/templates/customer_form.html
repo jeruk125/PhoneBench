@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit customer' if customer else 'New customer' }} · PhoneBench{% endblock %}
+{% block content %}<div class="page-heading"><div><p class="eyebrow">CUSTOMERS</p><h1>{{ 'Edit customer' if customer else 'Add a customer' }}</h1></div><a href="{{ url_for('core.customers') }}">← Back to customers</a></div>
+<form class="panel form-grid" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="wide">Full name *<input name="name" value="{{ customer.name if customer else '' }}" required maxlength="160"></label><label>Phone<input name="phone" value="{{ customer.phone if customer else '' }}" maxlength="40"></label><label>Email<input name="email" value="{{ customer.email if customer else '' }}" type="email" maxlength="255"></label>
+  <label class="wide">Address<textarea name="address" rows="2">{{ customer.address if customer else '' }}</textarea></label><label class="wide">Internal notes<textarea name="notes" rows="3">{{ customer.notes if customer else '' }}</textarea></label>
+  <div class="wide form-actions"><button class="button primary">{{ 'Save customer' if customer else 'Create customer' }}</button></div>
+</form>{% endblock %}
