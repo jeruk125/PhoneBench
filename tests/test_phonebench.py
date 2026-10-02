@@ -11,7 +11,7 @@ from phonebench import create_app
 from phonebench.extensions import db
 from phonebench.money import format_money, parse_money
 from phonebench.models import (
-    AppSetting, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
+    AppSetting, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice, ManualGuide,
     Payment, Repair, RepairAttempt, Solution, Transaction, User,
 )
 from phonebench.security import new_portal_token
@@ -115,6 +115,47 @@ class PhoneBenchTestCase(unittest.TestCase):
         item = InventoryItem.query.filter_by(name="Test part").one()
         self.assertEqual(item.unit_cost, Decimal("1234.50"))
         self.assertEqual(item.selling_price, Decimal("2000.00"))
+
+    def test_manual_guide_is_separate_and_recommended_on_repair(self):
+        _, _, repair = self.make_repair()
+        repair.customer_problem = "Odin software is not installed"
+        db.session.commit()
+        self.login()
+
+        response = self.client.post("/knowledge/manual", data={
+            "category": "SOFTWARE",
+            "title": "Install Odin software",
+            "tool": "Odin",
+            "software": "Odin",
+            "problem": "Odin is not installed",
+            "content": "Install the required software before troubleshooting.",
+            "procedure": "Download the installer from the official source.",
+            "reference_url": "https://example.invalid/odin",
+        })
+        self.assertEqual(response.status_code, 302)
+        guide = ManualGuide.query.one()
+        self.assertEqual(Solution.query.count(), 0)
+        self.assertEqual(repair.status, "RECEIVED")
+
+        response = self.client.get("/knowledge?q=Odin")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"MANUAL GUIDE", response.data)
+        self.assertIn(b"Install Odin software", response.data)
+        self.assertNotIn(b"1 successes", response.data)
+
+        response = self.client.get(f"/repairs/{repair.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Install Odin software", response.data)
+        self.assertIn(b"Historical repair cases", response.data)
+
+        response = self.client.post("/knowledge/manual", data={
+            "category": "GUIDE",
+            "title": "Unsafe reference",
+            "content": "A guide with a non-http URL",
+            "reference_url": "javascript:alert(1)",
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ManualGuide.query.count(), 1)
 
     def test_authentication_customer_crud_and_workflow_to_knowledge(self):
         response = self.client.get("/")

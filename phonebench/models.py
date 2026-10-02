@@ -207,6 +207,24 @@ class Solution(db.Model):
     author = db.relationship("User")
 
 
+class ManualGuide(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(32), nullable=False, default="GUIDE", index=True)
+    title = db.Column(db.String(180), nullable=False, index=True)
+    device_model = db.Column(db.String(180), index=True)
+    problem = db.Column(db.Text)
+    tool = db.Column(db.String(160), index=True)
+    software = db.Column(db.String(180), index=True)
+    content = db.Column(db.Text, nullable=False)
+    procedure = db.Column(db.Text)
+    warnings = db.Column(db.Text)
+    reference_url = db.Column(db.String(1000))
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    author = db.relationship("User")
+
+
 class InventoryItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sku = db.Column(db.String(80), unique=True, index=True)

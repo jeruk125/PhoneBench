@@ -36,6 +36,12 @@ Use the **ENG / IND** selector in the top bar (or on the sign-in page) to switch
 
 Owners and admins can select Indonesian rupiah (IDR) or US dollars (USD) under **Settings → Display currency**. Amounts across the application, including invoices and reports, use the selected currency format. Money fields group digits as you type (for example, `100.000` in IDR and `100,000` in USD). Changing the display currency does not convert saved amounts or perform exchange-rate calculations; select the currency that matches your records.
 
+## Knowledge library
+
+The Knowledge library keeps **Historical repair cases** separate from **Manual guides**. Historical cases are created from successful repair attempts and alone contribute successful/failed case counts. Owners, admins, and technicians can add manual guides for tools, software, device models, procedures, and references; these guides never count as completed repairs. Matching guides can appear in a repair's **Related knowledge** section when their title, model, use case, tool, or software matches the repair details.
+
+After updating an existing installation, run `flask --app run.py init-db` once to create the new manual-guide table. This adds the missing table without deleting or changing existing records.
+
 ## Demo records
 
 `flask --app run.py seed-demo` creates fictional `Demo ...` records without demo users. Seeded notes, repairs, solutions, inventory, and invoice values are explicitly marked as demo content.

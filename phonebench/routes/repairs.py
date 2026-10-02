@@ -1,8 +1,10 @@
 import os
 import secrets
 import mimetypes
+import re
 import zipfile
-from sqlalchemy import func
+from urllib.parse import urlparse
+from sqlalchemy import case, func
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -14,7 +16,7 @@ from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models import (
     AppSetting, Attachment, AuditLog, Customer, Device, Diagnosis, InventoryItem, InventoryMovement, Invoice,
-    Repair, RepairAttempt, Solution, User,
+    ManualGuide, Repair, RepairAttempt, Solution, User,
 )
 from ..security import ROLE_PERMISSIONS, allowed_upload, audit, permission_required
 from ..money import parse_money
@@ -22,6 +24,7 @@ from ..money import parse_money
 repairs = Blueprint("repairs", __name__)
 REPAIR_STATUSES = ["RECEIVED", "DIAGNOSING", "WAITING_CUSTOMER", "WAITING_PART", "REPAIRING", "TESTING", "COMPLETED", "FAILED", "CANCELLED", "PICKED_UP"]
 DIAGNOSIS_CATEGORIES = ["Bootloop", "Stuck logo", "Hardbrick", "Softbrick", "FRP", "Screen lock", "Account lock", "No signal", "IMEI/baseband", "Camera", "Audio", "Charging", "USB", "Wi-Fi", "Bluetooth", "Software corruption", "Update failure", "Application/system crash", "Other"]
+MANUAL_GUIDE_CATEGORIES = ("GUIDE", "TOOL", "SOFTWARE", "TROUBLESHOOTING")
 
 
 def _visible_repair(repair_id):
@@ -112,11 +115,57 @@ def repair_detail(repair_id):
         Solution.device_model.ilike(f"%{repair.device.device_code or repair.device.model}%"),
         Solution.problem.ilike(f"%{repair.customer_problem[:60]}%"),
     )).order_by(Solution.verified.desc(), Solution.success_count.desc()).limit(8).all() if can_read_knowledge else []
+    guide_texts = [
+        repair.device.brand or "",
+        repair.device.device_code or "",
+        repair.device.model or "",
+        repair.customer_problem or "",
+        *(diagnosis.problem_category or "" for diagnosis in repair.diagnoses),
+        *(diagnosis.diagnosis or "" for diagnosis in repair.diagnoses),
+        *(diagnosis.symptoms or "" for diagnosis in repair.diagnoses),
+        *(attempt.tool or "" for attempt in repair.attempts),
+        *(attempt.firmware or "" for attempt in repair.attempts),
+        *(attempt.error_message or "" for attempt in repair.attempts),
+    ]
+    ignored_terms = {
+        "the", "and", "for", "with", "after", "before", "from", "this", "that",
+        "phone", "device", "yang", "dan", "untuk", "dengan", "tidak", "belum",
+        "pada", "dari", "ini", "nya",
+    }
+    problem_terms = {
+        term for text in guide_texts
+        for term in re.findall(r"[A-Za-z0-9._+-]{3,}", text)
+        if term.lower() not in ignored_terms
+    }
+    guide_terms = list(dict.fromkeys([
+        repair.device.device_code or "",
+        repair.device.model or "",
+        *sorted(problem_terms, key=str.lower),
+    ]))[:30]
+    guide_filters = []
+    for term in guide_terms:
+        pattern = f"%{term}%"
+        guide_filters.extend([
+            ManualGuide.title.ilike(pattern),
+            ManualGuide.device_model.ilike(pattern),
+            ManualGuide.problem.ilike(pattern),
+            ManualGuide.tool.ilike(pattern),
+            ManualGuide.software.ilike(pattern),
+            ManualGuide.content.ilike(pattern),
+            ManualGuide.procedure.ilike(pattern),
+        ])
+    related_guides = ManualGuide.query.filter(or_(*guide_filters)).order_by(
+        case(
+            (ManualGuide.device_model == (repair.device.device_code or repair.device.model), 0),
+            else_=1,
+        ),
+        ManualGuide.updated_at.desc(),
+    ).limit(8).all() if can_read_knowledge and guide_filters else []
     stock = InventoryItem.query.filter(InventoryItem.quantity > 0).order_by(InventoryItem.name).all()
     attempt_ids = [attempt.id for attempt in repair.attempts]
     attempt_attachments = Attachment.query.filter(Attachment.entity_type == "attempt", Attachment.entity_id.in_(attempt_ids)).all() if attempt_ids else []
     events = AuditLog.query.filter_by(entity_type="repair", entity_id=str(repair.id)).order_by(AuditLog.timestamp.desc()).limit(50).all()
-    return render_template("repair_detail.html", repair=repair, statuses=REPAIR_STATUSES, categories=DIAGNOSIS_CATEGORIES, related=related, stock=stock, attachments=Attachment.query.filter_by(entity_type="repair", entity_id=repair.id).all(), attempt_attachments=attempt_attachments, events=events)
+    return render_template("repair_detail.html", repair=repair, statuses=REPAIR_STATUSES, categories=DIAGNOSIS_CATEGORIES, related=related, related_guides=related_guides, stock=stock, attachments=Attachment.query.filter_by(entity_type="repair", entity_id=repair.id).all(), attempt_attachments=attempt_attachments, events=events)
 
 
 @repairs.post("/repairs/<int:repair_id>/status")
@@ -239,6 +288,7 @@ def solution_from_attempt(repair_id, attempt_id):
 @permission_required("knowledge.read")
 def knowledge():
     query = Solution.query.join(Repair, Solution.source_repair_id == Repair.id).join(Device, Repair.device_id == Device.id)
+    guide_query = ManualGuide.query
     term = request.args.get("q", "").strip()
     if term:
         pattern = f"%{term}%"
@@ -249,9 +299,16 @@ def knowledge():
             Solution.firmware.ilike(pattern), Solution.procedure.ilike(pattern),
             Solution.warnings.ilike(pattern),
         ))
+        guide_query = guide_query.filter(or_(
+            ManualGuide.title.ilike(pattern), ManualGuide.device_model.ilike(pattern),
+            ManualGuide.problem.ilike(pattern), ManualGuide.tool.ilike(pattern),
+            ManualGuide.software.ilike(pattern), ManualGuide.content.ilike(pattern),
+            ManualGuide.procedure.ilike(pattern), ManualGuide.warnings.ilike(pattern),
+        ))
     model = request.args.get("model", "").strip()
     if model:
         query = query.filter(Solution.device_model.ilike(f"%{model}%"))
+        guide_query = guide_query.filter(ManualGuide.device_model.ilike(f"%{model}%"))
     for field, column in [
         ("brand", Device.brand), ("problem", Solution.problem),
         ("tool", Solution.tool), ("firmware", Solution.firmware),
@@ -260,6 +317,16 @@ def knowledge():
         value = request.args.get(field, "").strip()
         if value:
             query = query.filter(column.ilike(f"%{value}%"))
+            guide_column = {
+                "problem": ManualGuide.problem,
+                "tool": ManualGuide.tool,
+                "firmware": ManualGuide.software,
+            }.get(field)
+            if guide_column is not None:
+                guide_query = guide_query.filter(guide_column.ilike(f"%{value}%"))
+    category = request.args.get("category", "")
+    if category in MANUAL_GUIDE_CATEGORIES:
+        guide_query = guide_query.filter_by(category=category)
     if request.args.get("success") == "true":
         query = query.filter(Solution.success_count > 0)
     elif request.args.get("success") == "false":
@@ -268,9 +335,58 @@ def knowledge():
     if verified in {"true", "false"}:
         query = query.filter_by(verified=verified == "true")
     solutions = query.order_by(Solution.verified.desc(), Solution.success_count.desc(), Solution.created_at.desc()).all()
+    guides = guide_query.order_by(ManualGuide.updated_at.desc()).all()
     brands = [value[0] for value in db.session.query(Device.brand).distinct().order_by(Device.brand).all()]
     attachments = Attachment.query.filter_by(entity_type="solution").all()
-    return render_template("knowledge.html", solutions=solutions, term=term, brands=brands, attachments=attachments)
+    guide_attachments = Attachment.query.filter_by(entity_type="manual_guide").all()
+    return render_template(
+        "knowledge.html", solutions=solutions, guides=guides, term=term, brands=brands,
+        attachments=attachments, guide_attachments=guide_attachments,
+        guide_categories=MANUAL_GUIDE_CATEGORIES,
+    )
+
+
+@repairs.post("/knowledge/manual")
+@login_required
+@permission_required("knowledge.write")
+def manual_guide_create():
+    category = request.form.get("category", "GUIDE")
+    title = request.form.get("title", "").strip()
+    content = request.form.get("content", "").strip()
+    reference_url = request.form.get("reference_url", "").strip()
+    device_model = request.form.get("device_model", "").strip()
+    problem = request.form.get("problem", "").strip()
+    tool = request.form.get("tool", "").strip()
+    software = request.form.get("software", "").strip()
+    procedure = request.form.get("procedure", "").strip()
+    warnings = request.form.get("warnings", "").strip()
+    if category not in MANUAL_GUIDE_CATEGORIES or not title or len(title) > 180 or not content:
+        flash("Choose a valid guide category and provide a title and content.", "danger")
+        return redirect(url_for("repairs.knowledge"))
+    fields = [
+        (device_model, 180), (problem, 5000), (tool, 160), (software, 180),
+        (procedure, 10000), (warnings, 5000), (reference_url, 1000),
+    ]
+    if any(len(value) > maximum for value, maximum in fields):
+        flash("One or more manual knowledge fields exceed their maximum length.", "danger")
+        return redirect(url_for("repairs.knowledge"))
+    if reference_url:
+        parsed_url = urlparse(reference_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            flash("Reference links must use a valid HTTP or HTTPS URL.", "danger")
+            return redirect(url_for("repairs.knowledge"))
+    guide = ManualGuide(
+        category=category, title=title, device_model=device_model or None,
+        problem=problem or None, tool=tool or None, software=software or None,
+        content=content, procedure=procedure or None, warnings=warnings or None,
+        reference_url=reference_url or None, created_by=current_user.id,
+    )
+    db.session.add(guide)
+    db.session.flush()
+    audit("create", "manual_guide", guide.id, new_value=guide.title)
+    db.session.commit()
+    flash("Manual knowledge article created.", "success")
+    return redirect(url_for("repairs.knowledge") + "#manual-guides")
 
 
 @repairs.post("/knowledge/<int:solution_id>/verify")
@@ -307,15 +423,15 @@ def consume_part(repair_id):
 @repairs.post("/attachments/<entity_type>/<int:entity_id>")
 @login_required
 def attachment_upload(entity_type, entity_id):
-    if entity_type not in {"customer", "device", "repair", "attempt", "invoice", "solution"}:
+    if entity_type not in {"customer", "device", "repair", "attempt", "invoice", "solution", "manual_guide"}:
         abort(400)
-    model_map = {"customer": Customer, "device": Device, "repair": Repair, "attempt": RepairAttempt, "invoice": Invoice, "solution": Solution}
+    model_map = {"customer": Customer, "device": Device, "repair": Repair, "attempt": RepairAttempt, "invoice": Invoice, "solution": Solution, "manual_guide": ManualGuide}
     entity = db.session.get(model_map[entity_type], entity_id)
     if not entity:
         abort(404)
     permission = {
         "customer": "customers.write", "device": "devices.write", "repair": "repairs.write",
-        "attempt": "repairs.write", "invoice": "invoices.write", "solution": "knowledge.write",
+        "attempt": "repairs.write", "invoice": "invoices.write", "solution": "knowledge.write", "manual_guide": "knowledge.write",
     }[entity_type]
     if permission not in ROLE_PERMISSIONS.get(current_user.role, set()) and "*" not in ROLE_PERMISSIONS.get(current_user.role, set()):
         abort(403)
@@ -377,6 +493,7 @@ def attachment_delete(attachment_id):
     required = {
         "customer": "customers.write", "device": "devices.write", "repair": "repairs.write",
         "attempt": "repairs.write", "invoice": "invoices.write", "solution": "knowledge.write",
+        "manual_guide": "knowledge.write",
     }.get(attachment.entity_type)
     permissions = ROLE_PERMISSIONS.get(current_user.role, set())
     if required not in permissions and "*" not in permissions:
@@ -407,6 +524,7 @@ def attachment_download(attachment_id):
     required = {
         "customer": "customers.read", "device": "devices.read", "repair": "repairs.read",
         "attempt": "repairs.read", "invoice": "invoices.read", "solution": "knowledge.read",
+        "manual_guide": "knowledge.read",
     }.get(attachment.entity_type)
     permissions = ROLE_PERMISSIONS.get(current_user.role, set())
     if required not in permissions and "*" not in permissions:
